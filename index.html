@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سجل أصحاب المولدات</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--tx:#1b1f24;--mut:#6a7280;--bd:#dde1e7;--pri:#0f6b5c;--prit:#fff;--dan:#c0392b;--tag:#e8ebef}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#14171b;--card:#1d2127;--tx:#eceff3;--mut:#9aa3af;--bd:#2d333b;--pri:#2fb59f;--prit:#06231e;--dan:#ef7b6e;--tag:#2d333b}
+.top{display:flex;justify-content:space-between;align-items:center}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,Arial,sans-serif;font-size:16px}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:6px 0 12px}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px;text-align:center;margin-bottom:12px}
+.stat b{font-size:22px;color:var(--pri);margin-inline-start:6px}
+.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.bar input{flex:1;min-width:200px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:inherit;font:inherit}
+button{border:0;border-radius:10px;padding:10px 14px;font:inherit;cursor:pointer;background:var(--pri);color:var(--prit);white-space:nowrap}
+button.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+button.del{background:transparent;color:var(--dan);border:1px solid var(--dan)}
+.item{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+.item h3{margin:0 0 4px;font-size:17px}
+.row{color:var(--mut);font-size:14px;margin:2px 0}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--tag);margin-inline-end:4px}
+.acts{display:flex;gap:8px;margin-top:10px}
+.form{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px;display:none}
+.form.on{display:block}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.empty,.note{text-align:center;color:var(--mut);padding:20px}
+#pa{display:none}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff}
+  .wrap{display:none}
+  #pa{display:block;background:#fff;color:#000}
+  #pa h2{margin:0 0 4px}
+  #pa table{width:100%;border-collapse:collapse;font-size:13px}
+  #pa th,#pa td{border:1px solid #666;padding:5px 6px;text-align:right}
+  #pa th{background:#e6efed}
+  #pa tr{page-break-inside:avoid}
+  #pa thead{display:table-header-group}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="top"><h1>⚡ سجل أصحاب المولدات</h1><button class="sec" id="theme"></button></div>
+<div class="stat">عدد المولدات: <b id="sCount">0</b></div>
+<div class="bar">
+<input id="q" placeholder="بحث بالاسم أو الهاتف أو المحلة…">
+<button id="add">+ إضافة</button>
+</div>
+<div class="form" id="form">
+<input type="hidden" id="fid">
+<label>اسم صاحب المولدة *</label><input id="name">
+<div class="g2">
+<div><label>رقم الهاتف</label><input id="phone" inputmode="tel"></div>
+<div><label>رقم الهوية / البطاقة</label><input id="nid"></div>
+</div>
+<label>المحلة / القرية</label><input id="area">
+<label>العنوان التفصيلي</label><input id="addr">
+<div class="g2">
+<div><label>سعة المولدة (kVA)</label><input id="kva" type="number" inputmode="decimal"></div>
+<div><label>الحالة</label><select id="status"><option>يعمل</option><option>متوقف</option><option>مخالف</option></select></div>
+</div>
+<label>ملاحظات</label><textarea id="notes" rows="2"></textarea>
+<div class="acts"><button id="save">حفظ</button><button class="sec" id="cancel">إلغاء</button></div>
+</div>
+<div id="list"></div>
+<div class="bar" style="margin-top:14px">
+<button id="pdf">طباعة / حفظ PDF</button>
+<button class="sec" id="exp">تصدير Excel (CSV)</button>
+<button class="sec" id="bak">نسخة احتياطية</button>
+<button class="sec" id="rst">استرجاع نسخة</button>
+<input type="file" id="file" accept=".json" style="display:none">
+</div>
+<div class="note" id="msg"></div>
+</div>
+<div id="pa"></div>
+<script>
+const $=id=>document.getElementById(id);
+const KEY="genOwnersV1";
+const F=["name","phone","nid","area","addr","kva","status","notes"];
+let rows=[];
+function load(){try{rows=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){rows=[]}}
+function persist(){
+  try{localStorage.setItem(KEY,JSON.stringify(rows));return true}
+  catch(e){$("msg").textContent="تعذر الحفظ في المتصفح. استخدم زر النسخة الاحتياطية.";return false}
+}
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function render(){
+  const t=$("q").value.trim().toLowerCase();
+  const r=rows.filter(x=>!t||[x.name,x.phone,x.area,x.addr].join(" ").toLowerCase().includes(t));
+  $("sCount").textContent=rows.length;
+  if(!r.length){$("list").innerHTML='<div class="empty">لا توجد سجلات</div>';return}
+  $("list").innerHTML=r.map(x=>`<div class="item"><h3>${esc(x.name)}</h3>
+  <div><span class="tag">${esc(x.status||"")}</span>${x.area?`<span class="tag">${esc(x.area)}</span>`:""}</div>
+  ${x.phone?`<div class="row">📞 ${esc(x.phone)}</div>`:""}
+  ${x.nid?`<div class="row">🪪 ${esc(x.nid)}</div>`:""}
+  ${x.addr?`<div class="row">📍 ${esc(x.addr)}</div>`:""}
+  <div class="row">السعة: ${esc(x.kva||"-")} kVA</div>
+  ${x.notes?`<div class="row">📝 ${esc(x.notes)}</div>`:""}
+  <div class="acts"><button class="sec" data-e="${x.id}">تعديل</button><button class="del" data-d="${x.id}">حذف</button></div></div>`).join("");
+}
+function openForm(x){
+  $("form").classList.add("on");$("fid").value=x?x.id:"";
+  F.forEach(k=>$(k).value=x?(x[k]??""):(k==="status"?"يعمل":""));
+  $("name").focus();
+}
+$("add").onclick=()=>openForm(null);
+$("cancel").onclick=()=>$("form").classList.remove("on");
+$("q").oninput=render;
+$("list").onclick=e=>{
+  const ed=e.target.dataset.e,de=e.target.dataset.d;
+  if(ed){openForm(rows.find(x=>x.id===ed));scrollTo(0,0)}
+  if(de&&confirm("حذف هذا السجل نهائياً؟")){rows=rows.filter(x=>x.id!==de);persist();render()}
+};
+$("save").onclick=()=>{
+  const d={};F.forEach(k=>d[k]=$(k).value.trim());
+  if(!d.name){alert("يرجى إدخال الاسم");return}
+  const id=$("fid").value;
+  if(id){rows=rows.map(x=>x.id===id?{...d,id}:x)}
+  else rows.unshift({...d,id:Date.now().toString(36)+Math.random().toString(36).slice(2,6)});
+  persist();$("form").classList.remove("on");$("msg").textContent="";render();
+};
+function saveFile(name,text,type){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([text],{type}));
+  a.download=name;document.body.appendChild(a);a.click();a.remove();
+}
+$("exp").onclick=()=>{
+  const H=["الاسم","الهاتف","الهوية","المحلة","العنوان","kVA","الحالة","ملاحظات"];
+  const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  saveFile("generators.csv","\uFEFF"+[H.map(q).join(",")].concat(rows.map(x=>F.map(k=>q(x[k])).join(","))).join("\n"),"text/csv");
+};
+$("bak").onclick=()=>saveFile("generators-backup-"+new Date().toISOString().slice(0,10)+".json",JSON.stringify(rows),"application/json");
+$("rst").onclick=()=>$("file").click();
+$("file").onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const a=JSON.parse(r.result);
+      if(!Array.isArray(a))throw 0;
+      if(confirm("سيتم استبدال البيانات الحالية بالنسخة المختارة. متابعة؟")){rows=a;persist();render()}
+    }catch(x){alert("الملف غير صالح")}
+  };
+  r.readAsText(f);e.target.value="";
+};
+$("pdf").onclick=()=>{
+  if(!rows.length){$("msg").textContent="لا توجد سجلات للطباعة";return}
+  const H=["#","الاسم","الهاتف","الهوية","المحلة","العنوان","kVA","الحالة","ملاحظات"];
+  $("pa").innerHTML=`<h2>سجل أصحاب المولدات</h2><div style="margin-bottom:8px;font-size:13px">التاريخ: ${new Date().toLocaleDateString("ar")} · العدد الكلي: ${rows.length}</div>
+  <table><thead><tr>${H.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>
+  ${rows.map((x,i)=>`<tr><td>${i+1}</td>${F.map(k=>`<td>${esc(x[k]||"")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  try{window.print()}catch(e){$("msg").textContent="الطباعة غير متاحة هنا"}
+};
+const TK="genTheme";
+let th=null;try{th=localStorage.getItem(TK)}catch(e){}
+if(th!=="dark"&&th!=="light")th=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+function applyTheme(){document.documentElement.dataset.theme=th;$("theme").textContent=th==="dark"?"☀️ فاتح":"🌙 غامق"}
+$("theme").onclick=()=>{th=th==="dark"?"light":"dark";applyTheme();try{localStorage.setItem(TK,th)}catch(e){}};
+applyTheme();
+load();render();
+</script>
+</body>
+</html>
